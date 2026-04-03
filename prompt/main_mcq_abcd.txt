@@ -11,6 +11,6 @@ Use only the provided fields as input context.
 
 Output requirements:
 1) Return exactly one final answer.
-2) Do not output reasoning, explanation, or any extra text.
+2) This question has {option_count} answer options labeled {option_letters_plain}.
 3) Follow this exact format:
-Output your final verdict by strictly following this format: [A], [B], [C], or [D]
+Output your final verdict by strictly following this format: one of {option_bracket_choices}

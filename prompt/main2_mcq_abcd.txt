@@ -1,5 +1,7 @@
 Output Contract (highest priority):
 - Ignore any previous output-style instructions.
 - You may provide reasoning according to the template prompt.
+- Again, you must first provide step-by-step reasoning, and only then output the most likely answer option.
+- You should not output the answer directly without reasoning first.
 - If reasoning is provided, write it before the final line.
-- Your final line must be exactly: Final Answer: [A] or Final Answer: [B] or Final Answer: [C] or Final Answer: [D].
+- Your final line must be exactly: Final Answer: {option_bracket_or}.

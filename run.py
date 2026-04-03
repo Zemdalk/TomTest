@@ -4,6 +4,7 @@ import argparse
 import hashlib
 import json
 import math
+import os
 import random
 from collections import defaultdict
 from dataclasses import dataclass
@@ -13,12 +14,55 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from llm import LLMClient
 
-from data import SampleMeta, extract_answers, load_dataset_splits, normalize_tom_row
+from data import SampleMeta, extract_answers, load_dataset_splits, normalize_tom_row, to_json_text
 from prompt import (
-    build_mcq_option_pack, build_prompt, combine_prompt_three_stage,
-    extract_answer_bracket_abcd, load_main_prompts, load_templates,
+    build_mcq_option_pack, build_mcq_prompt_fields, build_prompt,
+    combine_prompt_three_stage, load_main_prompts, load_templates,
 )
-from scoring import normalize_text, score_prediction
+from scoring import extract_mcq_letter, normalize_text, score_prediction
+
+
+MCQ_SHUFFLE_DATASETS = frozenset({"Tomato", "ToMBench"})
+MCQ_VOTE_DATASETS = frozenset({"ToMBench"})
+DEFAULT_JUDGE_OPEN_DATASETS = ("ToMi", "ToMQA")
+
+OPEN_JUDGE_PROMPT = """You are a Theory of Mind (ToM) evaluation system. Your only function is to compare a model's answer against the ground truth and output whether it is correct.
+
+## Task
+Determine if the model demonstrates correct understanding of mental states (beliefs, intentions, desires, emotions, knowledge), including false beliefs and second-order attributions.
+
+## Input
+Context: {context}
+Question: {question}
+Ground Truth: {ground_truth}
+Model Answer: {model_answer}
+
+## Strict Judgment Rules
+Output ONLY ONE of these two strings, with no explanation, no reasoning, no preamble, and no markdown formatting:
+- CORRECT
+- INCORRECT
+
+## Criteria for CORRECT
+- The model answer matches the ground truth's mental state attribution (e.g., character believes X, feels Y, intends Z)
+- For false belief questions: The model correctly identifies what the character falsely believes, not the reality
+- For second-order questions: The model correctly identifies "A believes that B believes/feel X"
+- Wording differences are allowed if the mental state attribution is identical
+
+## Criteria for INCORRECT (including but not limited to)
+- Reality bias: Model answers based on real facts instead of character's limited/false belief
+- Order confusion: Mistakes first-order for second-order mental states
+- Attribution error: Wrong mental state category (e.g., says "angry" when ground truth is "relieved")
+- Ambiguity: Answer is vague, hedged, or contains multiple conflicting possibilities
+- Egocentric bias: Assumes character knows information they don't have access to
+
+## Output Format
+Your response must contain EXACTLY ONE word:
+CORRECT
+or
+INCORRECT
+"""
+
+OPEN_JUDGE_INSTRUCTION = "You are a strict Theory of Mind evaluation system. Reply with exactly one word: CORRECT or INCORRECT."
 
 
 # ---------------------------------------------------------------------------
@@ -38,6 +82,8 @@ class SampleJob:
     row: Dict[str, Any]     # 用于打分时的 infer_scoring_mode
     sample_id: str
     question: str
+    option_letters: Tuple[str, ...] = ()
+    option_count: int = 0
 
 
 def prepare_prompt(
@@ -63,20 +109,26 @@ def prepare_prompt(
             prompt=prompt, template_name=template_name, meta=meta,
             shuffle_k=shuffle_k, answers=answers, gold_letter="",
             scoring_mode_hint="", row=row, sample_id=sample_id,
-            question=str(row.get("Question", "")),
+            question=str(row.get("Question", "")), option_letters=(), option_count=0,
         )
 
     pack = build_mcq_option_pack(row, rng)
     if pack is not None:
-        options_block, gold_letter, q_stem = pack
         full = combine_prompt_three_stage(main_mcq, template, main2_mcq)
-        prompt_row = {**row, "Question": q_stem} if q_stem else row
-        prompt = build_prompt(full, prompt_row, meta, options_block=options_block)
+        prompt_row = {**row, "Question": pack.question_stem} if pack.question_stem else row
+        prompt = build_prompt(
+            full,
+            prompt_row,
+            meta,
+            options_block=pack.options_block,
+            extra_fields=build_mcq_prompt_fields(pack.option_letters),
+        )
         return SampleJob(
             prompt=prompt, template_name=template_name, meta=meta,
-            shuffle_k=shuffle_k, answers=answers, gold_letter=gold_letter,
-            scoring_mode_hint="bracket_abcd", row=row, sample_id=sample_id,
+            shuffle_k=shuffle_k, answers=answers, gold_letter=pack.gold_letter,
+            scoring_mode_hint="mcq_choice", row=row, sample_id=sample_id,
             question=str(row.get("Question", "")),
+            option_letters=pack.option_letters, option_count=len(pack.option_letters),
         )
 
     full = combine_prompt_three_stage(main_open, template, main2_open)
@@ -85,17 +137,18 @@ def prepare_prompt(
         prompt=prompt, template_name=template_name, meta=meta,
         shuffle_k=shuffle_k, answers=answers, gold_letter="",
         scoring_mode_hint="", row=row, sample_id=sample_id,
-        question=str(row.get("Question", "")),
+        question=str(row.get("Question", "")), option_letters=(), option_count=0,
     )
 
 
 def score_response(job: SampleJob, pred: str) -> Dict[str, Any]:
     """纯 CPU 操作：根据预测文本和 job 元信息打分，返回结果记录。"""
     pred_letter = ""
-    if job.scoring_mode_hint == "bracket_abcd":
-        pred_letter = extract_answer_bracket_abcd(pred)
+    if job.scoring_mode_hint == "mcq_choice":
+        pred_n = normalize_text(pred)
+        pred_letter = (extract_mcq_letter(pred_n, job.option_letters) or "").upper()
         hit = bool(pred_letter and pred_letter == job.gold_letter)
-        scoring_mode = "bracket_abcd"
+        scoring_mode = f"mcq_choice_{job.option_count}"
     else:
         pred_n = normalize_text(pred)
         hit, scoring_mode = score_prediction(
@@ -111,6 +164,184 @@ def score_response(job: SampleJob, pred: str) -> Dict[str, Any]:
         "shuffle_repeat": job.shuffle_k,
         "gold_letter": job.gold_letter, "pred_letter": pred_letter,
     }
+
+
+def _should_shuffle(dataset_name: str, prompt_style: str, shuffle_repeats: int) -> int:
+    if prompt_style != "two_layer":
+        return 1
+    return max(1, shuffle_repeats) if dataset_name in MCQ_SHUFFLE_DATASETS else 1
+
+
+def _build_open_judge_prompt(job: SampleJob, pred: str) -> str:
+    context = to_json_text(
+        {
+            "Story": job.row.get("Story", {}),
+            "Action": job.row.get("Action", {}),
+            "State": job.row.get("State", {}),
+            "Meta": job.row.get("Meta", {}),
+        }
+    )
+    return OPEN_JUDGE_PROMPT.format(
+        context=context,
+        question=job.question,
+        ground_truth=" | ".join(job.answers),
+        model_answer=pred,
+    )
+
+
+def _parse_judge_verdict(text: str) -> Tuple[bool, str]:
+    upper = (text or "").strip().upper()
+    if "INCORRECT" in upper:
+        return False, "INCORRECT"
+    if "CORRECT" in upper:
+        return True, "CORRECT"
+    return False, "INVALID"
+
+
+def _score_standard_batch(
+    jobs: List[SampleJob],
+    batch_results: List[Tuple[List[Any], Any]],
+    summary_item: Dict[str, Any],
+    all_records: List[Dict[str, Any]],
+    exp_log: "ExperimentLog",
+    dataset_name: str,
+    split_name: str,
+    tmpl_name: str,
+) -> None:
+    for job, (gens, _) in zip(jobs, batch_results):
+        pred = gens[0].text if gens else ""
+        rec = score_response(job, pred)
+        all_records.append(rec)
+        summary_item["total"] += 1
+        summary_item["correct"] += int(rec["correct"])
+        pred_tail = pred.replace("\n", "\\n")[-50:]
+        exp_log.write_file_only(
+            f"[STEP] {tmpl_name} | {dataset_name}/{split_name} | "
+            f"shuffle={rec['shuffle_repeat']} | idx={rec['index']} | "
+            f"{'OK' if rec['correct'] else 'FAIL'} | ...{pred_tail}"
+        )
+
+
+def _score_voted_mcq_batch(
+    jobs: List[SampleJob],
+    batch_results: List[Tuple[List[Any], Any]],
+    summary_item: Dict[str, Any],
+    all_records: List[Dict[str, Any]],
+    exp_log: "ExperimentLog",
+    dataset_name: str,
+    split_name: str,
+    tmpl_name: str,
+) -> None:
+    grouped: Dict[Tuple[int, str], List[Dict[str, Any]]] = defaultdict(list)
+    for job, (gens, _) in zip(jobs, batch_results):
+        pred = gens[0].text if gens else ""
+        pred_n = normalize_text(pred)
+        pred_letter = (extract_mcq_letter(pred_n, job.option_letters) or "").upper()
+        pred_tail = pred.replace("\n", "\\n")[-50:]
+        exp_log.write_file_only(
+            f"[STEP] {tmpl_name} | {dataset_name}/{split_name} | "
+            f"shuffle={job.shuffle_k} | idx={job.meta.index} | "
+            f"vote={pred_letter or '-'} | ...{pred_tail}"
+        )
+        grouped[(job.meta.index, job.sample_id)].append(
+            {"job": job, "prediction": pred, "pred_letter": pred_letter}
+        )
+
+    for (_, _), items in grouped.items():
+        first_job = items[0]["job"]
+        votes: Dict[str, int] = {}
+        for item in items:
+            letter = item["pred_letter"]
+            if not letter:
+                continue
+            if letter not in votes:
+                votes[letter] = 0
+            votes[letter] += 1
+        winner = max(votes, key=votes.get) if votes else ""
+        hit = bool(winner and winner == first_job.gold_letter)
+        rec = {
+            "template": first_job.template_name,
+            "dataset": first_job.meta.dataset,
+            "split": first_job.meta.split,
+            "index": first_job.meta.index,
+            "sample_id": first_job.sample_id,
+            "question": first_job.question,
+            "gold_answers": first_job.answers,
+            "prediction": winner,
+            "correct": hit,
+            "scoring_mode": f"mcq_vote_{first_job.option_count}",
+            "prompt_style": "two_layer",
+            "shuffle_repeat": len(items),
+            "gold_letter": first_job.gold_letter,
+            "pred_letter": winner,
+            "vote_counts": votes,
+            "vote_trace": [x["pred_letter"] for x in items],
+        }
+        all_records.append(rec)
+        summary_item["total"] += 1
+        summary_item["correct"] += int(hit)
+        exp_log.write_file_only(
+            f"[VOTE] {tmpl_name} | {dataset_name}/{split_name} | idx={first_job.meta.index} | "
+            f"gold={first_job.gold_letter} | winner={winner or '-'} | votes={json.dumps(votes, ensure_ascii=False)} | "
+            f"{'OK' if hit else 'FAIL'}"
+        )
+
+
+def _score_judged_open_batch(
+    jobs: List[SampleJob],
+    batch_results: List[Tuple[List[Any], Any]],
+    summary_item: Dict[str, Any],
+    all_records: List[Dict[str, Any]],
+    exp_log: "ExperimentLog",
+    dataset_name: str,
+    split_name: str,
+    tmpl_name: str,
+    judge_runner: LLMClient,
+) -> None:
+    judge_prompts = []
+    predictions = []
+    for job, (gens, _) in zip(jobs, batch_results):
+        pred = gens[0].text if gens else ""
+        predictions.append(pred)
+        judge_prompts.append(_build_open_judge_prompt(job, pred))
+
+    exp_log.write(
+        f"[BATCH_JUDGE] {tmpl_name} | {dataset_name}/{split_name} | {len(judge_prompts)} judge prompts"
+    )
+    judge_results = judge_runner.batch_generate(
+        judge_prompts,
+        instructions=[OPEN_JUDGE_INSTRUCTION] * len(judge_prompts),
+    )
+
+    for job, pred, (judge_gens, _) in zip(jobs, predictions, judge_results):
+        judge_text = judge_gens[0].text if judge_gens else ""
+        hit, judge_label = _parse_judge_verdict(judge_text)
+        rec = {
+            "template": job.template_name,
+            "dataset": job.meta.dataset,
+            "split": job.meta.split,
+            "index": job.meta.index,
+            "sample_id": job.sample_id,
+            "question": job.question,
+            "gold_answers": job.answers,
+            "prediction": pred,
+            "correct": hit,
+            "scoring_mode": "llm_judge_deepseek_chat",
+            "prompt_style": "two_layer",
+            "shuffle_repeat": job.shuffle_k,
+            "gold_letter": "",
+            "pred_letter": "",
+            "judge_verdict": judge_label,
+            "judge_raw": judge_text,
+        }
+        all_records.append(rec)
+        summary_item["total"] += 1
+        summary_item["correct"] += int(hit)
+        pred_tail = pred.replace("\n", "\\n")[-50:]
+        exp_log.write_file_only(
+            f"[STEP] {tmpl_name} | {dataset_name}/{split_name} | idx={job.meta.index} | "
+            f"judge={judge_label} | {'OK' if hit else 'FAIL'} | ...{pred_tail}"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -199,6 +430,21 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--model-tag", default=None,  help="显示名，默认同 --model。")
     p.add_argument("--api-url",   default="http://localhost:8000/v1")
     p.add_argument("--api-key",   default="not-needed")
+    p.add_argument("--judge-model", default=os.environ.get("TOMTEST_JUDGE_MODEL", "deepseek-chat"))
+    p.add_argument(
+        "--judge-api-url",
+        default=os.environ.get("TOMTEST_JUDGE_API_URL", "https://api.deepseek.com/v1"),
+    )
+    p.add_argument(
+        "--judge-api-key",
+        default=os.environ.get("TOMTEST_JUDGE_API_KEY", os.environ.get("DEEPSEEK_API_KEY", "")),
+    )
+    p.add_argument(
+        "--judge-open-datasets",
+        nargs="*",
+        default=list(DEFAULT_JUDGE_OPEN_DATASETS),
+        help="Datasets judged by external LLM-as-a-judge instead of string matching.",
+    )
 
     # 生成参数
     p.add_argument("--max-new-tokens", type=int,   default=2048)
@@ -245,6 +491,8 @@ def main() -> None:
         temperature=args.temperature, max_tokens=args.max_new_tokens,
         top_p=args.top_p, enable_thinking=False,
     )
+    judge_open_datasets = set(args.judge_open_datasets or [])
+    judge_runner: Optional[LLMClient] = None
     print(f"[INFO] Model: {model_tag} @ {args.api_url}", flush=True)
     print(f"[INFO] {len(templates)} template(s). prompt_style={args.prompt_style} "
           f"shuffle_repeats={args.shuffle_repeats}", flush=True)
@@ -270,7 +518,7 @@ def main() -> None:
             if args.max_samples_per_split > 0:
                 rows = rows[: args.max_samples_per_split]
 
-            n_shuffles = max(1, args.shuffle_repeats) if args.prompt_style == "two_layer" else 1
+            n_shuffles = _should_shuffle(dataset_name, args.prompt_style, args.shuffle_repeats)
             ds_hash = int(hashlib.md5(dataset_name.encode()).hexdigest()[:8], 16)
 
             for tmpl_name, template in templates.items():
@@ -301,17 +549,40 @@ def main() -> None:
                 batch_results = runner.batch_generate([j.prompt for j in jobs])
 
                 # ---- 3. 批量打分 ----
-                for job, (gens, _) in zip(jobs, batch_results):
-                    pred = gens[0].text if gens else ""
-                    rec = score_response(job, pred)
-                    all_records.append(rec)
-                    summary[key]["total"] += 1
-                    summary[key]["correct"] += int(rec["correct"])
-                    pred_tail = pred.replace("\n", "\\n")[-50:]
-                    exp_log.write_file_only(
-                        f"[STEP] {tmpl_name} | {dataset_name}/{split_name} | "
-                        f"shuffle={rec['shuffle_repeat']} | idx={rec['index']} | "
-                        f"{'OK' if rec['correct'] else 'FAIL'} | ...{pred_tail}"
+                if dataset_name in MCQ_VOTE_DATASETS:
+                    _score_voted_mcq_batch(
+                        jobs, batch_results, summary[key], all_records,
+                        exp_log, dataset_name, split_name, tmpl_name,
+                    )
+                elif dataset_name in judge_open_datasets:
+                    if judge_runner is None:
+                        if not args.judge_api_key:
+                            raise RuntimeError(
+                                f"Dataset {dataset_name} requires --judge-api-key "
+                                "or env TOMTEST_JUDGE_API_KEY / DEEPSEEK_API_KEY."
+                            )
+                        judge_runner = LLMClient(
+                            model_name=args.judge_model,
+                            api_key=args.judge_api_key,
+                            api_url=args.judge_api_url,
+                            temperature=0.0,
+                            max_tokens=8,
+                            top_p=1.0,
+                            enable_thinking=False,
+                        )
+                        print(
+                            f"[INFO] Judge enabled for {sorted(judge_open_datasets)} "
+                            f"via {args.judge_model} @ {args.judge_api_url}",
+                            flush=True,
+                        )
+                    _score_judged_open_batch(
+                        jobs, batch_results, summary[key], all_records,
+                        exp_log, dataset_name, split_name, tmpl_name, judge_runner,
+                    )
+                else:
+                    _score_standard_batch(
+                        jobs, batch_results, summary[key], all_records,
+                        exp_log, dataset_name, split_name, tmpl_name,
                     )
 
                 tot, cor = summary[key]["total"], summary[key]["correct"]

@@ -1,8 +1,9 @@
 """Prompt 构建：模板加载、字段填充、MCQ 选项打乱。"""
 import random
 import re
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 from data import SampleMeta, extract_answers, extract_wrong_answers, to_json_text
 
@@ -48,8 +49,9 @@ Use only the provided fields as input context.
 Output requirements:
 1) Return exactly one final answer.
 2) Do not output reasoning, explanation, or any extra text.
-3) Follow this exact format:
-Output your final verdict by strictly following this format: [A], [B], [C], or [D]"""
+3) This question has {option_count} answer options labeled {option_letters_plain}.
+4) Follow this exact format:
+Output your final verdict by strictly following this format: one of {option_bracket_choices}"""
 
 EMBEDDED_MAIN_OPEN = """You are given structured ToM task inputs.
 
@@ -69,7 +71,7 @@ Output requirements:
 
 EMBEDDED_MAIN2_MCQ_ABCD = """Output Contract (highest priority):
 - Ignore any previous output-style instructions.
-- Return exactly one option in this format: [A] or [B] or [C] or [D].
+- Return exactly one option in this format: {option_bracket_or}.
 - Do not output any other text."""
 
 EMBEDDED_MAIN2_OPEN = """Output Contract (highest priority):
@@ -90,6 +92,41 @@ class SafeFormatDict(dict):
 def _escape(s: str) -> str:
     """转义 { }，防止 format_map 误解析 story/JSON 里的花括号。"""
     return s.replace("{", "{{").replace("}", "}}")
+
+
+CHOICE_LETTERS = tuple("ABCD")
+
+
+@dataclass
+class MCQPack:
+    options_block: str
+    gold_letter: str
+    question_stem: str
+    option_letters: Tuple[str, ...]
+
+
+def canonicalize_choice_letter(text: str, option_letters: Sequence[str]) -> str:
+    if not text:
+        return ""
+    allowed = "".join(option_letters)
+    upper = text.strip().upper()
+    if upper in option_letters:
+        return upper
+    m = re.search(rf"^\s*([{allowed}])\s*[\.\)\]:：、]?\s*$", text, flags=re.IGNORECASE)
+    if m:
+        return m.group(1).upper()
+    m = re.search(rf"\b([{allowed}])\b", upper)
+    return m.group(1).upper() if m else ""
+
+
+def build_mcq_prompt_fields(option_letters: Sequence[str]) -> Dict[str, str]:
+    bracket_choices = [f"[{x}]" for x in option_letters]
+    return {
+        "option_count": str(len(option_letters)),
+        "option_letters_plain": ", ".join(option_letters),
+        "option_bracket_choices": ", ".join(bracket_choices),
+        "option_bracket_or": " or ".join(bracket_choices),
+    }
 
 
 def _extract_story_text(story: Any) -> str:
@@ -135,6 +172,7 @@ def build_prompt(
     row: Dict[str, Any],
     meta: SampleMeta,
     options_block: str = "",
+    extra_fields: Optional[Dict[str, str]] = None,
 ) -> str:
     text = _expand_bracket_fields(template, row)
     text = _expand_top_level(text, row)
@@ -151,6 +189,9 @@ def build_prompt(
         sample_id=_escape(str(row_meta.get("id", "")) if isinstance(row_meta, dict) else ""),
         options_block=_escape(options_block),
     )
+    if extra_fields:
+        for k, v in extra_fields.items():
+            fields[k] = _escape(str(v))
     return text.format_map(fields)
 
 
@@ -191,58 +232,83 @@ def load_templates(prompt_dir: Path, selected: Optional[List[str]]) -> Dict[str,
 
 def build_mcq_option_pack(
     row: Dict[str, Any], rng: random.Random
-) -> Optional[Tuple[str, str, str]]:
+) -> Optional[MCQPack]:
     """
-    尝试将样本构造为 4 选项 MCQ。
-    返回 (options_block, gold_letter, question_stem)，无法构造则返回 None。
+    将样本尽量构造为 2/3/4 选项 MCQ。
+    返回 MCQPack；无法构造则返回 None。
     """
-    letters = ["A", "B", "C", "D"]
     correct_list = extract_answers(row.get("Answer"))
     wrong_list = extract_wrong_answers(row.get("Answer"))
 
-    # 路径 1：结构化 correct/wrong（Tomato 等）
-    if len(correct_list) == 1 and len(wrong_list) == 3:
-        opts = [correct_list[0]] + wrong_list[:3]
-        order = list(range(4))
+    # 路径 1：结构化 correct/wrong（支持 2/3/4 选项）
+    if len(correct_list) == 1 and 1 <= len(wrong_list) <= 3:
+        option_letters = CHOICE_LETTERS[: 1 + len(wrong_list)]
+        opts = [correct_list[0]] + wrong_list[: len(option_letters) - 1]
+        order = list(range(len(option_letters)))
         rng.shuffle(order)
         shuffled = [opts[i] for i in order]
-        gold_letter = letters[order.index(0)]
-        lines = [f"{letters[i]}) {shuffled[i]}" for i in range(4)]
-        return "Options:\n" + "\n".join(lines), gold_letter, str(row.get("Question", "")).strip()
+        gold_letter = option_letters[order.index(0)]
+        lines = [f"{option_letters[i]}) {shuffled[i]}" for i in range(len(option_letters))]
+        return MCQPack(
+            options_block="Options:\n" + "\n".join(lines),
+            gold_letter=gold_letter,
+            question_stem=str(row.get("Question", "")).strip(),
+            option_letters=tuple(option_letters),
+        )
 
-    # 路径 2：选项嵌入 question 文本（ToMBench 等）
+    # 路径 2：选项嵌入 question 文本（支持 2/3/4 选项；兼容 ToMBench）
     q = str(row.get("Question", ""))
     pat = re.compile(r"\b([A-D])\s*[\.．、\):：]\s*", flags=re.IGNORECASE)
     ms = list(pat.finditer(q))
-    for i in range(len(ms) - 3):
-        if [ms[i+j].group(1).upper() for j in range(4)] != ["A", "B", "C", "D"]:
+
+    def _first_after(matches: List[re.Match], letter: str, start_pos: int) -> Optional[re.Match]:
+        for m in matches:
+            if m.start() > start_pos and m.group(1).upper() == letter:
+                return m
+        return None
+
+    for a_match in ms:
+        if a_match.group(1).upper() != "A":
             continue
-        chunk = ms[i:i+4]
-        opts = [q[chunk[j].end(): (chunk[j+1].start() if j < 3 else len(q))].strip() for j in range(4)]
-        if not all(opts):
+        chosen = [a_match]
+        prev = a_match.start()
+        for letter in CHOICE_LETTERS[1:]:
+            nxt = _first_after(ms, letter, prev)
+            if nxt is None:
+                break
+            chosen.append(nxt)
+            prev = nxt.start()
+
+        if len(chosen) < 2:
             continue
-        gold_raw = str(correct_list[0]).strip().upper() if correct_list else ""
-        if gold_raw not in letters:
+
+        option_letters = list(CHOICE_LETTERS[: len(chosen)])
+        opts = [
+            q[chosen[j].end() : (chosen[j + 1].start() if j < len(chosen) - 1 else len(q))].strip()
+            for j in range(len(chosen))
+        ]
+
+        while opts and not opts[-1]:
+            opts.pop()
+            option_letters.pop()
+
+        if len(opts) < 2 or not all(opts):
             continue
-        order = list(range(4))
+
+        gold_raw = canonicalize_choice_letter(correct_list[0] if correct_list else "", option_letters)
+        if gold_raw not in option_letters:
+            continue
+
+        order = list(range(len(option_letters)))
         rng.shuffle(order)
         shuffled = [opts[i] for i in order]
-        gold_letter = letters[order.index(letters.index(gold_raw))]
-        lines = [f"{letters[i]}) {shuffled[i]}" for i in range(4)]
-        return "Options:\n" + "\n".join(lines), gold_letter, q[:chunk[0].start()].strip()
+        gold_letter = option_letters[order.index(option_letters.index(gold_raw))]
+        lines = [f"{option_letters[i]}) {shuffled[i]}" for i in range(len(option_letters))]
+        return MCQPack(
+            options_block="Options:\n" + "\n".join(lines),
+            gold_letter=gold_letter,
+            question_stem=q[: chosen[0].start()].strip(),
+            option_letters=tuple(option_letters),
+        )
 
     return None
-
-
-def extract_answer_bracket_abcd(response: str) -> str:
-    """从模型输出中提取 [A/B/C/D]。"""
-    for pat in (
-        r"final\s*answer\s*[:：]\s*\[\s*([ABCD])\s*\]",
-        r"\[\s*([ABCD])\s*\]",
-        r"final\s*answer\s*[:：]\s*([ABCD])\b",
-        r"\b([ABCD])\b",
-    ):
-        m = re.search(pat, response, flags=re.IGNORECASE)
-        if m:
-            return m.group(1).upper()
-    return ""

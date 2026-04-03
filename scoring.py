@@ -1,10 +1,11 @@
 """答案打分：模式推断 + 多种匹配策略。"""
 import re
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 
 DATASET_SCORING: Dict[str, str] = {
     "ToMBench": "mcq_letter",
+    "SocialIQA": "mcq_letter",
     "ToMi":     "open_substring",
     "OpenToM":  "open_substring",
     "BigToM":   "open_substring",
@@ -20,30 +21,38 @@ def _is_mcq_letter(s: str) -> bool:
     return bool(s and len(s) == 1 and s.lower() in "abcdefghij")
 
 
-def _last_option_letter(text: str) -> Optional[str]:
-    found = re.findall(r"\b([a-j])\b", text, flags=re.IGNORECASE)
+def _allowed_letters_regex(option_letters: Optional[Iterable[str]] = None) -> str:
+    letters = "".join((x.lower() for x in (option_letters or tuple("ABCDEFGHIJ"))))
+    return re.escape(letters)
+
+
+def _last_option_letter(text: str, option_letters: Optional[Iterable[str]] = None) -> Optional[str]:
+    allowed = _allowed_letters_regex(option_letters)
+    found = re.findall(rf"\b([{allowed}])\b", text, flags=re.IGNORECASE)
     skip = {"i", "a"}
     for x in reversed(found):
-        if x.lower() not in skip:
+        if len(found) == 1 or x.lower() not in skip:
             return x.lower()
     return found[-1].lower() if found else None
 
 
-def extract_mcq_letter(pred_n: str) -> Optional[str]:
-    """从归一化模型输出中提取最终选项字母（取最靠右的匹配）。"""
+def extract_mcq_letter(pred_n: str, option_letters: Optional[Iterable[str]] = None) -> Optional[str]:
+    """从归一化模型输出中提取最终选项字母（支持 2/3/4 选项）。"""
     if not pred_n:
         return None
+    allowed = _allowed_letters_regex(option_letters)
     patterns = [
-        r"\banswer\s+is\s+\(?([a-j])\)?",
-        r"(?:^|[\s.!?\n])(?:the\s+)?(?:final\s+)?answer\s+is\s+\(?([a-j])\)?",
-        r"(?:^|[\s.!?\n])answer\s*[:：]\s*\(?([a-j])\)?",
-        r"(?:option|choice)\s*[:：]\s*\(?([a-j])\)?",
-        r"\boption\s+([a-j])\b",
-        r"(?:答案|选项|选择|正确答案)\s*[:：]\s*\(?([a-j])\)?",
-        r"\(([a-j])\)\s*(?:is\s+)?(?:correct|right|对)\b",
-        r"(?:^|[\s\"'「])([a-j])\s*[).、．]\s*(?:$|[\s\n])",
-        r"\*\*([a-j])\*\*",
-        r"(?:^|[\s\n])`([a-j])`(?:\s|$)",
+        rf"\banswer\s+is\s+\(?([{allowed}])\)?",
+        rf"(?:^|[\s.!?\n])(?:the\s+)?(?:final\s+)?answer\s+is\s+\(?([{allowed}])\)?",
+        rf"(?:^|[\s.!?\n])answer\s*[:：]\s*\(?([{allowed}])\)?",
+        rf"(?:option|choice)\s*[:：]\s*\(?([{allowed}])\)?",
+        rf"\boption\s+([{allowed}])\b",
+        rf"(?:答案|选项|选择|正确答案)\s*[:：]\s*\(?([{allowed}])\)?",
+        rf"\(([{allowed}])\)\s*(?:is\s+)?(?:correct|right|对)\b",
+        rf"\[\s*([{allowed}])\s*\]",
+        rf"(?:^|[\s\"'「])([{allowed}])\s*[).、．]\s*(?:$|[\s\n])",
+        rf"\*\*([{allowed}])\*\*",
+        rf"(?:^|[\s\n])`([{allowed}])`(?:\s|$)",
     ]
     last, last_start = None, -1
     for p in patterns:
@@ -54,10 +63,10 @@ def extract_mcq_letter(pred_n: str) -> Optional[str]:
         return last
     # 长 CoT：优先取末段独立字母
     if len(pred_n) > 400:
-        t = _last_option_letter(pred_n[-1200:])
+        t = _last_option_letter(pred_n[-1200:], option_letters)
         if t is not None:
             return t
-    return _last_option_letter(pred_n)
+    return _last_option_letter(pred_n, option_letters)
 
 
 def infer_scoring_mode(dataset: str, row: Dict[str, Any]) -> str:
