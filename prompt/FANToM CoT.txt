@@ -1,0 +1,14 @@
+Context:
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+Current State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Let's think step by step. First, I need to identify the initial state from Environment State: {State[Environment_State]} and how it changed after actions: {Action[actions]}. Then I need to determine the state at the beginning (Time 0).
+
+Step-by-step reasoning:

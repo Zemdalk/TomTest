@@ -1,0 +1,12 @@
+Context:
+Story: {Story[full_story]}
+
+Actions Taken: {Action[actions]}
+
+Current State Information:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Let's think step by step based on the story, actions, and current state.

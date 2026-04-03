@@ -1,0 +1,11 @@
+Narrative: {Story[full_story]}
+
+Action Sequence: {Action[actions]}
+
+Current State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Provide your answer directly based on the information above.

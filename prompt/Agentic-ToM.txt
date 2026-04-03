@@ -1,0 +1,18 @@
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+Current State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Agentic Processing Steps:
+Step 1 (Perspective Taking): Identify what each agent knows based on observations.
+Step 2 (Mental State Tracking): Track beliefs/desires of relevant characters.
+Step 3 (Inference): Answer based on the mental model.
+
+{options_block}
+
+Question: {Question}
+
+Provide step-by-step reasoning following the agentic processing steps above.

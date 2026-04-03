@@ -1,0 +1,5 @@
+Output Contract (highest priority):
+- Ignore any previous output-style instructions.
+- You may provide reasoning according to the template prompt.
+- If reasoning is provided, write it before the final line.
+- Your final line must be exactly: Final Answer: [A] or Final Answer: [B] or Final Answer: [C] or Final Answer: [D].

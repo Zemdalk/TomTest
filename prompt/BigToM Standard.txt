@@ -1,0 +1,15 @@
+Story:
+{Story[full_story]}
+
+Actions:
+{Action[actions]}
+
+State:
+Human State: {State[Human_State]}
+Environment State: {State[Environment_State]}
+
+{options_block}
+
+Question: {Question}
+
+Answer the question based on the story, actions, and state information.

@@ -1,0 +1,29 @@
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Tree-of-Thought Reasoning:
+
+Root: Understanding the question requires identifying [key elements].
+
+Level 1 Thoughts (3 candidates):
+Thought 1: [Interpretation path 1]
+Thought 2: [Interpretation path 2]
+Thought 3: [Interpretation path 3]
+
+Evaluation (for each thought):
+- Score as "sure/maybe/impossible" based on consistency with story
+- If impossible, eliminate and backtrack
+- If maybe, explore further
+
+Level 2 Expansion (for viable paths):
+[Expand promising thoughts with belief state tracking]
+
+Final Selection:
+Choose the reasoning path with highest confidence and provide answer.

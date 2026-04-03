@@ -363,9 +363,11 @@ class LLMClient:
                     except (json.JSONDecodeError, Exception):
                         continue
 
-            except Exception:
-                pass
+            except Exception as e:
+                import traceback
+                logging.warning(f"[LLM] generate failed (will retry): {e}\n{traceback.format_exc()}")
 
+        logging.error(f"[LLM] all {max_retry} retries exhausted, returning empty generation.")
         return [Generation("")], last_usage
 
     # -----------------------------------------------------------------------

@@ -1,0 +1,23 @@
+Story (chronological order):
+{Story[full_story]}
+
+Actions: {Action[actions]}
+
+Current State:
+- Environment State: {State[Environment_State]}
+- Human State: {State[Human_State]}
+
+Instruction: Think step-by-step. At each step, repeat the current line from the story, then explain its effect on beliefs. Use [Null] if someone does not yet have knowledge. If a belief chain cannot be formed (e.g., someone exited too early), freeze belief at the last available step.
+
+{options_block}
+
+Question: {Question}
+
+Trace Format:
+## Step 1 ## [Event 1]
+Effect on beliefs: [Explanation]
+[Character] thinks [Object] is in [Location/Null]
+
+... (continue for each step)
+
+Final Answer: [Your Answer]

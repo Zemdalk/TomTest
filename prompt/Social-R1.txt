@@ -1,0 +1,21 @@
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Social Information Processing Steps:
+
+Step 1 (Encoding): Identify social cues in the story (who did what, when).
+Step 2 (Interpretation): 
+   - What are the mental states (beliefs/emotions) of each agent?
+   - Use evidence from the text to ground inferences.
+Step 3 (Response Generation): 
+   - Based on the question, what is the appropriate inference?
+   - Ensure reasoning is stage-consistent (encoding → interpretation → response).
+
+Question: {Question}
+
+Provide structured reasoning following the SIP stages above.

@@ -1,0 +1,16 @@
+You are given structured ToM task inputs.
+
+Fields:
+- Story: narrative context
+- Actions: observed action sequence
+- Human State: current human-related state
+- Environment State: current environment-related state
+- Question: target question to answer
+
+Use only the provided fields as input context.
+
+Output requirements:
+1) Return exactly one final answer.
+2) Do not output reasoning, explanation, or any extra text.
+3) Follow this exact format:
+Output your final verdict by strictly following this format: [A], [B], [C], or [D]

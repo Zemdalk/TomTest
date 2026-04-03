@@ -1,0 +1,23 @@
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Self-Ask Protocol:
+
+Are follow-up questions needed? If so, list them:
+Follow-up 1: [Question about belief state]
+Answer 1: [Derived from story]
+
+Follow-up 2: [Question about action timing]
+Answer 2: [Derived from actions]
+
+... (continue until sufficient information gathered)
+
+Final Reasoning: Synthesizing the answers above...
+Final Answer:

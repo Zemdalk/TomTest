@@ -1,0 +1,18 @@
+Story: {Story[full_story]}
+
+State Tracking:
+- Initial Human State: {State[Human_State]}
+- Initial Environment State: {State[Environment_State]}
+- Actions: {Action[actions]}
+
+To answer the question, let's track the state changes over time:
+
+Time 0 (Initial State - Beginning):
+- Environment: {State[Environment_State]}
+- Human: {State[Human_State]}
+
+Time 1+ (After actions): {Action[actions]}
+
+Question: {Question}
+
+Based on Time 0 (Initial State) above, the answer is:

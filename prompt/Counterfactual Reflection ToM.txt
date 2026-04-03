@@ -1,0 +1,20 @@
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+Initial State:
+- Environment State: {State[Environment_State]}
+- Human State: {State[Human_State]}
+
+Counterfactual Reflection Loop:
+
+Prediction: Based on current beliefs, what would {Character} likely do next?
+Observation: What actually happened in the story? [Reference actions]
+Comparison: Does the observation match the prediction?
+   - If yes: Confidence in current belief model increases.
+   - If no: Update belief model to resolve discrepancy.
+Reflection: What does this tell us about {Character}'s actual mental state?
+
+Question: {Question}
+
+Answer based on the final belief model after reflection:

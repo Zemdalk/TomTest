@@ -1,0 +1,22 @@
+Context:
+Story: {Story[full_story]}
+
+Actions: {Action[actions]}
+
+Current State:
+- Human State: {State[Human_State]}
+- Environment State: {State[Environment_State]}
+
+Question: {Question}
+
+Constraints:
+1. "At the beginning" refers to the initial state, not the state after actions.
+2. Distinguish between initial environment state and current state.
+3. Action sequence: {Action[actions]} shows temporal changes.
+
+Reasoning:
+Step 1: Identify the initial state from Environment State: {State[Environment_State]}.
+Step 2: Check if actions changed the relevant state.
+Step 3: Answer based on the initial state before actions.
+
+Answer:
