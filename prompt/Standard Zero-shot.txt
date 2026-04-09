@@ -1,9 +1,0 @@
-Story: {Story[full_story]}
-
-Actions: {Action[actions]}
-
-State:
-- Human State: {State[Human_State]}
-- Environment State: {State[Environment_State]}
-
-Question: {Question}

@@ -13,3 +13,5 @@ Environment State: {State[Environment_State]}
 Question: {Question}
 
 Answer the question based on the story, actions, and state information.
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).

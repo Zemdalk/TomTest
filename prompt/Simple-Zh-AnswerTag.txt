@@ -1,0 +1,11 @@
+请根据以下故事和问题，给出正确答案。
+
+最终答案必须放在 <answer>...</answer> 标签中；标签内只需输出一个选项字母（A/B/C/D 等），不要输出选项正文。
+
+故事：
+{Story[full_story]}
+
+{options_block}
+
+问题：
+{Question}

@@ -1,0 +1,6 @@
+You are taking a Theory of Mind (ToM) assessment. Based on the story provided, infer the mental states of characters (beliefs, intentions, emotions, or thoughts) and select the most likely answer.
+Note:
+(1) First analyze the character's cognitive state, information access, and situational constraints through step-by-step reasoning;
+(2) Finally, output the most likely answer index in the format: [[Answer]];
+(3) You must choose one option from A, B, C, D, even if the story lacks sufficient information;
+(4) You must provide reasoning before giving the final answer; do not output the answer directly.

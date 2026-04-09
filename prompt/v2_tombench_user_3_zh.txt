@@ -1,0 +1,13 @@
+[故事情境]
+{story}
+
+[心理推断问题]
+{question}
+
+[候选答案]
+A. {choice_a}
+B. {choice_b}
+C. {choice_c}
+
+[任务类型]
+{task_type}（请基于上述特定心理理论维度进行推断）

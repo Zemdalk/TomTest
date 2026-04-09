@@ -1,0 +1,26 @@
+Story:
+{Story[full_story]}
+
+Actions:
+{Action[actions]}
+
+State:
+Human State: {State[Human_State]}
+Environment State: {State[Environment_State]}
+
+{options_block}
+
+Question: {Question}
+
+First identify the exact target of the question:
+- which character or characters are relevant
+- whether the question asks about belief, knowledge, intention, emotion, or the real world
+- which object, location, or event is the focus
+
+Then answer using only the information needed for that target.
+
+Prefer the final relevant mental state over earlier irrelevant events.
+Do not add assumptions beyond the provided story, actions, and state.
+When belief and reality differ, choose the one that matches the question target.
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).

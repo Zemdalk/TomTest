@@ -1,0 +1,1 @@
+You are an expert at understanding human communication. Please leverage the information provided and choose the most probable answer to the question from the options. Output your final answer by strictly following this format: [A], [B], [C], or [D]

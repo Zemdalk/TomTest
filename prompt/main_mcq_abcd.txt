@@ -12,5 +12,6 @@ Use only the provided fields as input context.
 Output requirements:
 1) Return exactly one final answer.
 2) This question has {option_count} answer options labeled {option_letters_plain}.
-3) Follow this exact format:
-Output your final verdict by strictly following this format: one of {option_bracket_choices}
+3) Put only the option letter (one of {option_letters_plain}) inside XML-style tags:
+   <answer>LETTER</answer>
+4) Outside of <answer>...</answer> you may follow the middle template for reasoning; the chosen option must appear only as that single letter inside the tags.

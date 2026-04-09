@@ -1,0 +1,26 @@
+Story:
+{Story[full_story]}
+
+Actions:
+{Action[actions]}
+
+State:
+Human State: {State[Human_State]}
+Environment State: {State[Environment_State]}
+
+{options_block}
+
+Question: {Question}
+
+Answer the question using the smallest sufficient evidence.
+
+Use the State fields as the primary source of truth.
+Use the Story and Actions only when the State fields are incomplete, ambiguous, or need temporal clarification.
+
+Focus only on the agent, object, location, intention, or belief directly asked in the question.
+Ignore irrelevant details and avoid reconstructing the full story unless necessary.
+
+If the question is about what a character thinks, knows, believes, or expects, answer from that character's perspective rather than from the real world state.
+If the question is about the real world, answer from the actual current state.
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).

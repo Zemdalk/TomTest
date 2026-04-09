@@ -1,0 +1,12 @@
+[Story Context]
+{story}
+
+[Inference Question]
+{question}
+
+[Candidate Answers]
+A. {choice_a}
+B. {choice_b}
+
+[Task Type]
+{task_type}

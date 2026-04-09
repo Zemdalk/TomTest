@@ -48,10 +48,10 @@ Use only the provided fields as input context.
 
 Output requirements:
 1) Return exactly one final answer.
-2) Do not output reasoning, explanation, or any extra text.
-3) This question has {option_count} answer options labeled {option_letters_plain}.
-4) Follow this exact format:
-Output your final verdict by strictly following this format: one of {option_bracket_choices}"""
+2) This question has {option_count} answer options labeled {option_letters_plain}.
+3) Put only the option letter (one of {option_letters_plain}) inside XML-style tags, with no other text inside the tags:
+   <answer>LETTER</answer>
+4) Outside of <answer>...</answer> you may follow the middle template for reasoning style, but the model's final commitment must appear in that single tag pair."""
 
 EMBEDDED_MAIN_OPEN = """You are given structured ToM task inputs.
 
@@ -71,8 +71,9 @@ Output requirements:
 
 EMBEDDED_MAIN2_MCQ_ABCD = """Output Contract (highest priority):
 - Ignore any previous output-style instructions.
-- Return exactly one option in this format: {option_bracket_or}.
-- Do not output any other text."""
+- You may provide reasoning according to the template prompt before the final tag.
+- Your final line must be exactly one tag pair: <answer>LETTER</answer>
+  where LETTER is exactly one of {option_letters_plain} (option letter only, no punctuation, no option text inside the tag)."""
 
 EMBEDDED_MAIN2_OPEN = """Output Contract (highest priority):
 - Ignore any previous output-style instructions.
@@ -112,11 +113,41 @@ def canonicalize_choice_letter(text: str, option_letters: Sequence[str]) -> str:
     upper = text.strip().upper()
     if upper in option_letters:
         return upper
-    m = re.search(rf"^\s*([{allowed}])\s*[\.\)\]:：、]?\s*$", text, flags=re.IGNORECASE)
+    m = re.search(
+        rf"^\s*[\[\(\{{<]?([{allowed}])[\]\)\}}>]?\s*[\.\)\]:：、]?\s*$",
+        text,
+        flags=re.IGNORECASE,
+    )
     if m:
         return m.group(1).upper()
-    m = re.search(rf"\b([{allowed}])\b", upper)
-    return m.group(1).upper() if m else ""
+    return ""
+
+
+def _normalize_choice_text(text: str) -> str:
+    s = str(text or "").strip().lower()
+    s = re.sub(r"\s+", " ", s)
+    s = s.strip(" \t\r\n\"'`.,;:!?()[]{}")
+    return s
+
+
+def resolve_gold_letter(
+    correct_text: str,
+    option_letters: Sequence[str],
+    option_texts: Sequence[str],
+) -> str:
+    """
+    优先解析显式字母；若无字母，则按答案文本与选项文本对齐映射到字母。
+    """
+    gold = canonicalize_choice_letter(correct_text, option_letters)
+    if gold in option_letters:
+        return gold
+    norm_correct = _normalize_choice_text(correct_text)
+    if not norm_correct:
+        return ""
+    for letter, option_text in zip(option_letters, option_texts):
+        if norm_correct == _normalize_choice_text(option_text):
+            return letter
+    return ""
 
 
 def build_mcq_prompt_fields(option_letters: Sequence[str]) -> Dict[str, str]:
@@ -215,7 +246,7 @@ def load_templates(prompt_dir: Path, selected: Optional[List[str]]) -> Dict[str,
     templates: Dict[str, str] = {}
     if prompt_dir.exists():
         for txt in sorted(prompt_dir.glob("*.txt")):
-            if txt.stem.startswith("main_"):
+            if txt.stem.startswith("main_") or txt.stem.startswith("v2_"):
                 continue
             if selected and txt.stem not in selected:
                 continue
@@ -295,7 +326,11 @@ def build_mcq_option_pack(
         if len(opts) < 2 or not all(opts):
             continue
 
-        gold_raw = canonicalize_choice_letter(correct_list[0] if correct_list else "", option_letters)
+        gold_raw = resolve_gold_letter(
+            correct_list[0] if correct_list else "",
+            option_letters,
+            opts,
+        )
         if gold_raw not in option_letters:
             continue
 
@@ -312,3 +347,83 @@ def build_mcq_option_pack(
         )
 
     return None
+
+
+# ---------------------------------------------------------------------------
+# ToMBench / Tomato v2：模板自 prompt/v2_*.txt 加载
+# ---------------------------------------------------------------------------
+
+_V2_PROMPT_DIR = Path(__file__).resolve().parent / "prompt"
+
+
+def _read_v2_txt(filename: str) -> str:
+    p = _V2_PROMPT_DIR / filename
+    if not p.is_file():
+        raise FileNotFoundError(f"v2 prompt file not found: {p}")
+    return p.read_text(encoding="utf-8").strip()
+
+
+def tombench_system_prompt(language: str, cot: bool) -> str:
+    if language == "zh":
+        name = "v2_tombench_system_zh_cot.txt" if cot else "v2_tombench_system_zh.txt"
+    else:
+        name = "v2_tombench_system_en_cot.txt" if cot else "v2_tombench_system_en.txt"
+    return _read_v2_txt(name)
+
+
+def tombench_user_prompt(
+    user_language: str,
+    num_options: int,
+    story: str,
+    question: str,
+    choices_shuffled: List[str],
+    task_type: str,
+) -> str:
+    """user_language: 用户模板语言 zh/en（可与系统提示语言独立组合）。"""
+    lang = "zh" if user_language == "zh" else "en"
+    if num_options >= 4:
+        tpl = _read_v2_txt(f"v2_tombench_user_4_{lang}.txt")
+        return tpl.format(
+            story=story,
+            question=question,
+            choice_a=choices_shuffled[0],
+            choice_b=choices_shuffled[1],
+            choice_c=choices_shuffled[2],
+            choice_d=choices_shuffled[3],
+            task_type=task_type,
+        )
+    if num_options == 3:
+        tpl = _read_v2_txt(f"v2_tombench_user_3_{lang}.txt")
+        return tpl.format(
+            story=story,
+            question=question,
+            choice_a=choices_shuffled[0],
+            choice_b=choices_shuffled[1],
+            choice_c=choices_shuffled[2],
+            task_type=task_type,
+        )
+    tpl = _read_v2_txt(f"v2_tombench_user_2_{lang}.txt")
+    return tpl.format(
+        story=story,
+        question=question,
+        choice_a=choices_shuffled[0],
+        choice_b=choices_shuffled[1],
+        task_type=task_type,
+    )
+
+
+def tomato_mcqa_system_prompt() -> str:
+    return _read_v2_txt("v2_tomato_system.txt")
+
+
+def tomato_user_block(story_block: str, question: str, options: Dict[str, str]) -> str:
+    """options: {'A': text, 'B': text, ...} 按字母顺序展示。"""
+    lines_o = [f"[{letter}] {options[letter]}" for letter in sorted(options.keys())]
+    options_block = "\n".join(lines_o)
+    tpl = _read_v2_txt("v2_tomato_user.txt")
+    fields = SafeFormatDict(
+        story_block=_escape(story_block.strip()),
+        question=_escape(question.strip()),
+        options_block=_escape(options_block),
+    )
+    return tpl.format_map(fields)

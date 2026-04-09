@@ -1,0 +1,23 @@
+Story:
+{Story[full_story]}
+
+Actions:
+{Action[actions]}
+
+State:
+Human State: {State[Human_State]}
+Environment State: {State[Environment_State]}
+
+{options_block}
+
+Question: {Question}
+
+Answer using the story, actions, and state together.
+
+When a character’s belief or knowledge disagrees with reality in the text, let the question decide:
+- Questions about belief, thought, expectation, partial knowledge, or “from X’s point of view”: choose the option that matches that character’s view, even if it is false.
+- Questions about the real world, actual locations, or what truly happened: choose the option that matches the true situation implied by the story, actions, and state.
+
+Use Story and Actions to track what happened and who saw what; use State as a compact check that must still agree with the question’s focus (mind vs world).
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).

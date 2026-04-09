@@ -20,4 +20,4 @@ Effect on beliefs: [Explanation]
 
 ... (continue for each step)
 
-Final Answer: [Your Answer]
+Final line (multiple choice): <answer>LETTER</answer> — only the option letter inside the tags, per the outer output contract.

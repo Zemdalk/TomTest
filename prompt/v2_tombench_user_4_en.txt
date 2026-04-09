@@ -1,0 +1,14 @@
+[Story Context]
+{story}
+
+[Inference Question]
+{question}
+
+[Candidate Answers]
+A. {choice_a}
+B. {choice_b}
+C. {choice_c}
+D. {choice_d}
+
+[Task Type]
+{task_type} (Please infer based on this specific ToM dimension)

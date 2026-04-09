@@ -1,0 +1,23 @@
+Story:
+{Story[full_story]}
+
+Actions:
+{Action[actions]}
+
+State:
+Human State: {State[Human_State]}
+Environment State: {State[Environment_State]}
+
+{options_block}
+
+Question: {Question}
+
+Answer using the story, actions, and state together.
+
+Read the question for its target:
+- If it asks what someone believes, thinks, expects, knows, or feels, or why they act from their view, answer from that person’s perspective using information available to them at the moment the question is about (including mistaken beliefs supported by the story).
+- If it asks what is actually true, where something really is, or what objectively happened, answer from the facts consistent across the narrative and state.
+
+Do not assume the latest event is always what the question asks about, and do not ignore an earlier timepoint when the question clearly refers to it.
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).

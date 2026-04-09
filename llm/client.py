@@ -264,6 +264,9 @@ class LLMClient:
             Tuple of (list of generations, usage statistics)
         """
         start = time.time()
+        extra_body: Dict[str, Any] = {"top_k": self.top_k}
+        if not self.enable_thinking:
+            extra_body["chat_template_kwargs"] = {"enable_thinking": False}
 
         kwargs = dict(
             model=self.model,
@@ -276,7 +279,7 @@ class LLMClient:
                 {"role": "system", "content": instruction},
                 {"role": "user", "content": prompt},
             ],
-            extra_body={"top_k": self.top_k},
+            extra_body=extra_body,
         )
 
         if schema:

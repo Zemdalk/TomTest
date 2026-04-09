@@ -4,4 +4,5 @@ Output Contract (highest priority):
 - Again, you must first provide step-by-step reasoning, and only then output the most likely answer option.
 - You should not output the answer directly without reasoning first.
 - If reasoning is provided, write it before the final line.
-- Your final line must be exactly: Final Answer: {option_bracket_or}.
+- Your final line must be exactly: <answer>LETTER</answer>
+  where LETTER is exactly one of {option_letters_plain} (only the letter, no option text inside the tag).

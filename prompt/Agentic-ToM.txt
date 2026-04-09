@@ -16,3 +16,5 @@ Step 3 (Inference): Answer based on the mental model.
 Question: {Question}
 
 Provide step-by-step reasoning following the agentic processing steps above.
+
+Multiple-choice (options above): your final line must be exactly <answer>LETTER</answer> with only the option letter inside the tags (see the outer output contract).
