@@ -21,7 +21,11 @@ judge:
 
 # 实验参数
 repeats: 3
+<<<<<<< HEAD
 max_samples: 0  # 0 表示使用全部样本
+=======
+max_samples: 100  # 0 表示使用全部样本
+>>>>>>> upstream/main
 
 # 路径配置
 datasets_path: datasets
