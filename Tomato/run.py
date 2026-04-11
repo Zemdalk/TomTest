@@ -14,9 +14,9 @@ sys.path.insert(0, str(Path(__file__).parent.parent))
 from src import runner
 from Tomato.prompts import get_template, build_prompt
 from Tomato.metrics import compute_metrics
-
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
+logging.getLogger("uvicorn.access").setLevel(logging.WARNING)
 
 # ---------------------------------------------------------------------------
 # 从原始样本解析 MCQ，写入 row["_mcq"]（供 build_prompt 与金标）
