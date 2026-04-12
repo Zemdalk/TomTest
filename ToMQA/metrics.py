@@ -20,10 +20,17 @@ def _normalize(text: Any) -> str:
 
     # collapse whitespace
     s = re.sub(r"\s+", " ", s)
+    # normalize spaces to underscores
+    s = s.replace(" ", "_")
 
     # strip punctuation at edges (keep word chars and underscores)
     s = re.sub(r"^[^\w]+|[^\w]+$", "", s)
     return s
+
+
+def normalize_answer(text: Any) -> str:
+    """对答案做统一归一化（小写 + 空格转下划线 + 去首尾标点）"""
+    return _normalize(text)
 
 
 def _get_gold_list(row: Dict[str, Any]) -> List[str]:
