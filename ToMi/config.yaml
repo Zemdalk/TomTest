@@ -1,0 +1,10 @@
+# ToMi 数据集配置
+
+dataset: ToMi
+path: ToMi/test
+
+# 使用的 schema（从 ToMi/schemas.py 导入）
+schema: OneWordAnswer
+
+# 默认 prompt 方法
+default_prompt: zero_shot
