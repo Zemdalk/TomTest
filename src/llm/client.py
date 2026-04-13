@@ -227,7 +227,7 @@ class LLMClient:
 
             except Exception as e:
                 import traceback
-                logging.warning(f"[LLM] generate attempt {attempt + 1} failed: {e}\n{traceback.format_exc()}")
+                logging.warning(f"[LLM] generate attempt {attempt + 1}")
 
         logging.error(f"[LLM] generate all {max_retry} attempts exhausted, returning empty.")
         self._track_usage(LLMUsage(), success=False)
@@ -342,7 +342,7 @@ class LLMClient:
 
             except Exception as e:
                 import traceback
-                logging.warning(f"[LLM] parse mode attempt {attempt + 1} failed: {e}\n{traceback.format_exc()}")
+                logging.warning(f"[LLM] parse mode attempt {attempt + 1}")
 
         logging.error(f"[LLM] parse mode all {max_retry} attempts exhausted")
         self._track_usage(LLMUsage(), success=False)
@@ -406,7 +406,7 @@ Output ONLY the JSON object, no additional text or markdown formatting."""
 
             except Exception as e:
                 import traceback
-                logging.warning(f"[LLM] json_object mode attempt {attempt + 1} failed: {e}")
+                logging.warning(f"[LLM] json_object mode attempt {attempt + 1}")
 
         logging.error(f"[LLM] json_object mode all {max_retry} attempts exhausted")
         self._track_usage(LLMUsage(), success=False)
