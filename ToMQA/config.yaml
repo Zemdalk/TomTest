@@ -1,0 +1,10 @@
+# ToMQA 数据集配置
+
+dataset: ToMQA
+path: ToMQA/test
+
+# 使用的 schema（从 ToMQA/schemas.py 导入）
+schema: OpenAnswer
+
+# 默认 prompt 方法
+default_prompt: zero_shot
